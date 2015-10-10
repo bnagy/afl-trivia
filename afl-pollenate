@@ -1,0 +1,71 @@
+#! /usr/bin/env ruby
+
+# (c) Ben Nagy, 2015, All Rights Reserved 
+# This software is licensed under a permissive but non-GPL compatible license,
+# found in the accompanying LICENSE file.
+
+# Pollenate ONE sync dir from each target into all other 
+# targets fuzzing the same format. Assumes that work
+# dirs are named as by https://github.com/bnagy/afl-launch.
+#
+# Each target syncs inside its own directory already
+# so copying any of the sync dirs works. It is possible
+# that you'll miss some stuff, but it saves N * N-1 sync
+#
+# Layout is like
+# /path/to/fuzzing
+# |_ target1
+#   |_ t1-M0
+#   |_ t1-S1
+#   |_ [...]
+# |_ target2
+#   |_ t2-M0
+#   |_ t2-S1
+#   |_ [...]
+#
+# Then run pollenate /path/to/fuzzing. Dirs will
+# be copied as t1-S1.sync
+
+root = ARGV[0]
+
+SNOOZE = 3600
+INTERVAL = 10
+DEBUG = false
+
+unless root && File.directory?( root )
+  $stderr.puts "Usage: #{$0} /root/dir/of/fuzzers"
+  exit(1)
+end
+
+dirs = Dir["#{File.expand_path(root)}/*/"]
+
+loop do
+
+  dirs.each {|dir|
+    others = dirs - [dir]
+    fuzzer_dirs = Dir["#{dir}*S1/"]
+    fuzzer_dirs.each {|fd|
+      others.each {|other|
+        src = fd.chomp("/")
+        # Don't sync from synced dirs - that can try to write into the original,
+        # which ends poorly.
+        next if src =~ /.sync/
+        cmd = "rsync -ra --exclude=\".nfs*\" --exclude=\"crashes*/\" " +
+          "--exclude=\"hangs*/\" #{src}/ #{File.join(other, File.basename(src)+'.sync')}/"
+        $stderr.puts "[DEBUG] #{cmd}" if DEBUG
+        $stderr.print "Syncing #{fd.chomp("/")} -> #{other}"
+        mark = Time.now
+        `#{cmd}`
+        $stderr.puts "  ... #{"%.2f" % (Time.now - mark)}s"
+      }
+    }
+  }
+
+  (0...SNOOZE).step(INTERVAL).each {|left|
+    print "\r"
+    print( "[SLEEPING] (%dm%ds remaining, ^C to abort)          " % (SNOOZE-left).divmod(60) )
+    sleep INTERVAL
+  }
+  puts
+
+end

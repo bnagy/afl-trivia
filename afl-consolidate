@@ -1,0 +1,106 @@
+#! /usr/bin/env ruby
+
+# (c) Ben Nagy, 2015, All Rights Reserved 
+# This software is licensed under a permissive but non-GPL compatible license,
+# found in the accompanying LICENSE file.
+
+# Consolidate all queue and crash files from a group of AFL fuzzers into a
+# single output directory. Files are named according to their SHA1 sums, which
+# inherently removes duplicates. Optionally, an extension can be added, to
+# save you the trouble of running rename.
+#
+# This application assumes you are running your fuzzer work directories from a
+# single root directory. If you launch your fuzzers with
+# https://github.com/bnagy/afl-launch, this is already done for you.
+
+require 'fileutils'
+require 'digest/sha1'
+
+def die_usage
+  fail "Usage: #{$0} /path/to/fuzzing/root /path/to/output [extension]"
+end
+
+class Collision < StandardError; end
+
+def shacp fn, dst, extension
+  hex = Digest::SHA1.hexdigest File.binread(fn)
+  target = File.join dst, hex
+  target << extension
+  if File.file? target
+    raise Collision
+  end
+  FileUtils.cp fn, target
+end
+  
+if ARGV.size < 2
+  die_usage
+end
+
+unless File.directory? ARGV[0]
+  warn "Bad directory #{ARGV[0]}"
+  die_usage
+end
+
+begin
+  FileUtils.mkdir_p ARGV[1]
+rescue
+  warn "Bad output directory #{ARGV[1]}"
+  die_usage
+end
+
+fuzz_root = File.expand_path ARGV[0]
+out_dir = File.expand_path ARGV[1]
+copied = 0
+duplicates = 0
+extension = ""
+if ARGV[2]
+  # strip any leading dot from the user extension string - we only want one
+  extension = '.' << ARGV[2].sub( /^\./, '')
+end
+
+fuzzer_dirs = Dir["#{File.join(fuzz_root, '*')}"].select {|e| File.directory? e}
+
+# Make sure this is really an AFL fuzz root. All dirs should have a queue/
+# subdirectory
+unless fuzzer_dirs.all? {|fd| File.directory? File.join(fd, 'queue') }
+  warn "No queue dir in #{fd} - aborting."
+  die_usage
+end
+
+fuzzer_dirs.each {|fd|
+
+  warn "Processing #{fd}...\n"
+
+  # get files from the queue
+  Dir[File.join(fd, 'queue', '*')].each {|fn|
+    # This skips dot dirs by default, so we don't have to worry about .state/
+    next unless File.file? fn
+    begin
+      shacp fn, out_dir, extension
+      copied += 1
+    rescue Collision
+      duplicates += 1
+    rescue
+      fail "Error while copying #{fn} - #{$!}"
+    end
+  }
+
+  # Now get all the crash dirs
+  Dir[File.join(fd, 'crash*')].each {|cd|
+    next unless File.directory? cd
+    Dir[File.join(cd, '*')].each {|fn|
+      next unless File.file? fn
+      begin
+        shacp fn, out_dir, extension
+        copied += 1
+      rescue Collision
+        duplicates += 1
+      rescue
+        fail "Error while copying #{fn} - #{$!}"
+      end
+    }
+  }
+
+}
+      
+warn "#{copied} copied, #{duplicates} duplicates."

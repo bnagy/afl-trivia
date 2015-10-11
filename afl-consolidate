@@ -17,7 +17,8 @@ require 'fileutils'
 require 'digest/sha1'
 
 def die_usage
-  fail "Usage: #{$0} /path/to/fuzzing/root /path/to/output [extension]"
+  $stderr.puts "Usage: #{$0} /path/to/fuzzing/root /path/to/output [extension]"
+  exit(1)
 end
 
 class Collision < StandardError; end

@@ -335,6 +335,10 @@ echo
 # STEP 2: SORTING TUPLES #
 ##########################
 
+# sort(1), grep(1), uniq(1), etc. respect locale. Force "C" locale to make them
+# run faster since we know the data we are processing is ascii only from now on.
+export LC_ALL=C
+
 # With this out of the way, we sort all tuples by popularity across all
 # datasets. The reasoning here is that we won't be able to avoid the files
 # that trigger unique tuples anyway, so we will want to start with them and

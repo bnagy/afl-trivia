@@ -374,7 +374,7 @@ echo "[*] Finding best candidates for each tuple..."
 #
 #done < <(ls -rS "$IN_DIR")
 
-ls -rS "$IN_DIR" | parallel -k -I FN sed "s^\$^\ FN^" "$TRACE_DIR/FN" >> "$TRACE_DIR/.candidate_list"
+ls -rS "$IN_DIR" | parallel -k -I FN sed 's^\$^\ FN^' "$TRACE_DIR/FN" >> "$TRACE_DIR/.candidate_list"
 
 echo
 
